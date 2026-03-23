@@ -1,0 +1,43 @@
+<!-- popup/popup.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <span class="icon">◎</span>
+            <span class="text">POTTS</span>
+        </div>
+        <button id="settingsBtn" title="Settings">⚙️</button>
+    </header>
+
+    <main class="main">
+        <div class="status-panel">
+            <div id="voiceRing" class="voice-ring">🎙️</div>
+            <div id="statusText" class="status-text">Awaiting Command, Sir.</div>
+        </div>
+
+        <div id="chatArea" class="chat-area">
+            <!-- Messages pushed here -->
+        </div>
+        
+        <div class="quick-actions">
+            <button class="action-btn" data-action="GOOD_BAD">Is it good?</button>
+            <button class="action-btn" data-action="TRUST_SCORE">Trust Score</button>
+            <button class="action-btn" data-action="SUMMARIZE">Summarize</button>
+            <button class="action-btn" data-action="DEVIL_ADVOCATE">Play Devil's Advocate</button>
+        </div>
+
+        <!-- Manual text input fallback -->
+        <div class="input-area">
+            <input type="text" id="manualInput" placeholder="Command POTTS or speak...">
+            <button id="sendBtn">➤</button>
+        </div>
+    </main>
+    <script src="popup.js"></script>
+</body>
+</html>
