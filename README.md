@@ -18,7 +18,7 @@
 ![Chrome](https://img.shields.io/badge/Chrome-Extension-fbbf24?style=for-the-badge&logo=googlechrome&logoColor=fbbf24&labelColor=0d1520)
 ![Manifest](https://img.shields.io/badge/Manifest-V3-a78bfa?style=for-the-badge&labelColor=0d1520)
 ![Cost](https://img.shields.io/badge/API%20Cost-$0%20Free-00e676?style=for-the-badge&labelColor=0d1520)
-![AI](https://img.shields.io/badge/Powered%20by-Gemini%201.5%20Flash-00dcff?style=for-the-badge&labelColor=0d1520)
+<!-- ![AI](https://img.shields.io/badge/Powered%20by-Gemini%201.5%20Flash-00dcff?style=for-the-badge&labelColor=0d1520) -->
 ![Author](https://img.shields.io/badge/Built%20by-codest0411-ff6b6b?style=for-the-badge&labelColor=0d1520)
 
 <br/>
