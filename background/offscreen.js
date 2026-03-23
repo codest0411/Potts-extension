@@ -14,8 +14,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         stopSpeechRecognition();
     } else if (message.type === 'TTS_SPEAK') {
         speakText(message.payload);
+    } else if (message.type === 'TTS_STOP') {
+        stopSpeaking();
     }
 });
+
+function stopSpeaking() {
+    if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+}
 
 // Setup Speech Recognition
 function startSpeechRecognition() {

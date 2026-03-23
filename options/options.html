@@ -24,8 +24,18 @@
     
     <div class="group">
         <h2>API Integration</h2>
-        <label>Google Gemini API Key (1.5 Flash Free Tier)</label>
-        <span class="help">Required for intelligence features. Get from aistudio.google.com</span>
+        <span class="help" style="margin-bottom: 15px; display: block;">You can add one or multiple API keys. POTTS will auto-detect which API key works, falling back to the next available one if a provider is down or a key is invalid. Priority: Groq ➔ OpenAI ➔ Gemini.</span>
+        
+        <label>Groq API Key (Fastest)</label>
+        <input type="password" id="groqKey" placeholder="gsk_...">
+
+        <label>OpenAI API Key (GPT-4o-mini)</label>
+        <input type="password" id="openAiKey" placeholder="sk-...">
+
+        <label>Anthropic API Key (Claude 3 Haiku)</label>
+        <input type="password" id="anthropicKey" placeholder="sk-ant-...">
+
+        <label>Google Gemini API Key (1.5 Flash)</label>
         <input type="password" id="geminiKey" placeholder="AIzaSy...">
         
         <label>GNews API Key (Optional)</label>
@@ -40,8 +50,11 @@
         <input type="text" id="userName" placeholder="Sir / Ma'am / Boss">
     </div>
 
-    <button id="saveBtn">Save Configuration</button>
-    <span id="status"></span>
+    <div style="display: flex; gap: 10px;">
+        <button id="saveBtn">Save Configuration</button>
+        <button id="verifyBtn" style="background:#ffc107;">Verify API Keys</button>
+    </div>
+    <div id="status" style="margin-top: 15px;"></div>
     
     <script src="options.js"></script>
 </body>

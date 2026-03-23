@@ -43,7 +43,8 @@ export async function generateBriefing() {
     }
     
     // Check pending tab alerts or session memory
-    const { history } = await chrome.storage.session.get(['history']) || {history:[]};
+    const data = await chrome.storage.session.get(['history']);
+    const history = data.history || [];
     if (history.length > 0) {
         briefingText += "You have previous session context available in memory. ";
     }

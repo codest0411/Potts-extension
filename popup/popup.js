@@ -71,6 +71,11 @@ sendBtn.addEventListener('click', () => {
 });
 input.addEventListener('keypress', e => e.key === 'Enter' && sendBtn.click());
 
+// Stop Voice Output
+document.getElementById('stopVoiceBtn').addEventListener('click', () => {
+    chrome.runtime.sendMessage({type: 'TTS_STOP'});
+});
+
 // Push to Talk toggling
 voiceRing.addEventListener('click', () => {
     listening = !listening;
