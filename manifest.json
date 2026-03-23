@@ -13,7 +13,8 @@
     "offscreen",
     "declarativeNetRequest",
     "clipboardRead",
-    "contextMenus"
+    "contextMenus",
+    "tabGroups"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -26,6 +26,7 @@ chrome.runtime.onInstalled.addListener(async () => {
     chrome.contextMenus.create({ id: "potts_factcheck", title: "POTTS: Fact-Check Claim", contexts: ["selection"] });
     chrome.contextMenus.create({ id: "potts_translate", title: "POTTS: Translate", contexts: ["selection"] });
     chrome.contextMenus.create({ id: "potts_rewrite", title: "POTTS: Rewrite Text", contexts: ["editable"] });
+    chrome.contextMenus.create({ id: "potts_email_reply", title: "POTTS: Generate Email Reply", contexts: ["editable"] });
 });
 
 // Listener for Context Menus
@@ -37,6 +38,16 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
                  chrome.tabs.sendMessage(tab.id, { type: 'REPLACE_FOCUSED_TEXT', payload: rewritten });
                  chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: "Text rewritten, Sir." });
             }
+        });
+        return;
+    }
+
+    if (info.menuItemId === 'potts_email_reply') {
+        chrome.tabs.sendMessage(tab.id, { type: 'GET_DOM_CONTEXT' }, async (response) => {
+             const emailContext = response ? response.text : "";
+             const reply = await askGemini(`You are writing an email reply. Based on the following page context (which contains the email thread), write a professional, concise reply. Output ONLY the email text.\nContext: ${emailContext}`);
+             chrome.tabs.sendMessage(tab.id, { type: 'REPLACE_FOCUSED_TEXT', payload: reply });
+             chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: "I have drafted a response, Sir." });
         });
         return;
     }
@@ -56,11 +67,21 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     });
 });
 
-// Alarm Listener for Briefings
+// Alarm Listener for Briefings & Reminders
 chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === 'briefing-alarm') {
         const briefingText = await generateBriefing();
         chrome.runtime.sendMessage({ type: 'TTS_SPEAK', payload: briefingText });
+    } else if (alarm.name.startsWith('reminder__||__')) {
+        const task = alarm.name.split('__||__')[1];
+        chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'assets/icon-128.png',
+            title: 'POTTS Reminder',
+            message: task,
+            priority: 2
+        });
+        chrome.runtime.sendMessage({ type: 'TTS_SPEAK', payload: `Sir, you have a scheduled reminder: ${task}` });
     }
 });
 
@@ -149,6 +170,87 @@ async function processPottsRequest(reqData, sender) {
                 responseText = await askGemini(`Go deep on this topic. Provide pros, cons, a confidence score 0-100, and a summary.\nTopic: ${text}`);
                 break;
                 
+            case 'VISION_ANALYZE':
+                responseText = await askGemini(`Analyze this screenshot. What am I looking at? Be concise and observant.`, null, reqData.imageB64);
+                break;
+                
+            case 'ORGANIZE_TABS':
+                const allTabs = await chrome.tabs.query({ currentWindow: true });
+                if (allTabs.length < 2) { responseText = "Not enough tabs to organize, Sir."; break; }
+                const tabData = allTabs.map(t => `${t.id}: ${t.url} - ${t.title}`).join('\n');
+                const groupInstructions = await askGemini(`Categorize these tabs into 2-4 logical groups based on the URL and Title. 
+                Return ONLY a strict JSON object mapping the Group Name to an array of tab IDs. Example: {"Work": [12,34], "Shopping": [54], "Reading": [88]}
+                Do not include markdown blocks.
+                Tabs:\n${tabData}`);
+                try {
+                    const parsedGroups = JSON.parse(groupInstructions.replace(/```json/g,'').replace(/```/g,'').trim());
+                    for (const [groupName, tabIds] of Object.entries(parsedGroups)) {
+                        if (tabIds.length > 0) {
+                            const numericIds = tabIds.map(id => parseInt(id)).filter(id => !isNaN(id));
+                            if (numericIds.length > 0) {
+                                const groupId = await chrome.tabs.group({ tabIds: numericIds });
+                                await chrome.tabGroups.update(groupId, { title: groupName });
+                            }
+                        }
+                    }
+                    responseText = "Tabs have been successfully categorized and grouped, Sir.";
+                } catch(e) {
+                     responseText = "Failed to parse tab grouping data.";
+                }
+                break;
+
+            case 'SAVE_VAULT':
+                const vaultData = await chrome.storage.local.get(['vaultMemory']);
+                let vault = vaultData.vaultMemory || [];
+                vault.push({ date: new Date().toISOString(), context: context?.url, memory: text });
+                await chrome.storage.local.set({ vaultMemory: vault });
+                responseText = "I have stored that in my long-term memory vault, Sir.";
+                break;
+                
+            case 'RECALL_VAULT':
+                const vd = await chrome.storage.local.get(['vaultMemory']);
+                const vtext = (vd.vaultMemory || []).map(m => `[${m.date}] ${m.memory}`).join('\n');
+                responseText = await askGemini(`The user is asking a question about their long-term memory vault. Search the vault data below to answer it. \nUser Question: ${text}\nVault Data:\n${vtext}`);
+                break;
+
+            case 'SET_REMINDER':
+                const reminderDataStr = await askGemini(`Extract the reminder task and the delay in minutes from this text: "${text}". 
+                Return ONLY a strict JSON object with keys "task" (string) and "minutes" (number). 
+                If no time is specified, default to 60.
+                Example: {"task": "call john", "minutes": 5}`);
+                try {
+                    const rData = JSON.parse(reminderDataStr.replace(/```json/g,'').replace(/```/g,'').trim());
+                    if (rData.task && rData.minutes) {
+                        const alarmName = `reminder__||__${rData.task}`;
+                        chrome.alarms.create(alarmName, { delayInMinutes: rData.minutes });
+                        responseText = `I have set a reminder to ${rData.task} in ${rData.minutes} minute${rData.minutes !== 1 ? 's' : ''}, Sir.`;
+                    } else {
+                        responseText = "I couldn't parse the time for the reminder, Sir.";
+                    }
+                } catch(e) {
+                    responseText = "I encountered an error setting the reminder, Sir.";
+                }
+                break;
+
+            case 'LIST_REMINDERS':
+                const alarms = await chrome.alarms.getAll();
+                const reminders = alarms.filter(a => a.name.startsWith('reminder__||__'));
+                if (reminders.length === 0) {
+                    responseText = "You have no active scheduled reminders, Sir.";
+                } else {
+                    const taskList = reminders.map(a => {
+                        const tName = a.name.split('__||__')[1];
+                        const diffMins = Math.round((a.scheduledTime - Date.now()) / 60000);
+                        return `${tName} in ${diffMins} minutes`;
+                    }).join(', ');
+                    responseText = `You have ${reminders.length} active reminders: ${taskList}.`;
+                }
+                break;
+
+            case 'YOUTUBE_SUMMARIZE':
+                responseText = await askGemini(`This is a YouTube video page. Summarize the video based on this available DOM context. Extract the key takeaways: \n${text}`);
+                break;
+                
             default:
                 responseText = await askGemini(text); 
                 break;
@@ -175,6 +277,9 @@ async function handleVoiceCommand(transcript) {
     }
     
     let action = 'GENERAL';
+    let imageB64 = null;
+    
+    // Feature Routing
     if (query.includes('good or bad') || query.includes('is this a scam')) action = 'GOOD_BAD';
     else if (query.includes('briefing') || query.includes('morning')) {
         const briefingText = await generateBriefing();
@@ -185,6 +290,17 @@ async function handleVoiceCommand(transcript) {
     else if (query.includes('go deep') || query.includes('research')) action = 'RESEARCH';
     else if (query.includes('translate')) action = 'TRANSLATE';
     else if (query.includes('privacy')) action = 'PRIVACY_REPORT';
+    else if (query.includes('what am i looking at') || query.includes('read screen')) {
+        action = 'VISION_ANALYZE';
+        const dataUrl = await chrome.tabs.captureVisibleTab(null, {format: 'jpeg', quality: 50});
+        imageB64 = dataUrl;
+    }
+    else if (query.includes('remind me to') || query.includes('set a reminder')) action = 'SET_REMINDER';
+    else if (query.includes('what are my reminders') || query.includes('list active reminders')) action = 'LIST_REMINDERS';
+    else if (query.includes('organize my tabs') || query.includes('clean up tabs')) action = 'ORGANIZE_TABS';
+    else if (query.includes('remember this for later') || query.includes('save to vault')) action = 'SAVE_VAULT';
+    else if (query.includes('do i have') || query.includes('did i save') || query.includes('recall')) action = 'RECALL_VAULT';
+    else if (query.includes('summarize this video') || query.includes('youtube')) action = 'YOUTUBE_SUMMARIZE';
 
     // To get page context we need to query active tab
     const [activeTab] = await chrome.tabs.query({active: true, currentWindow: true});
@@ -193,6 +309,7 @@ async function handleVoiceCommand(transcript) {
     processPottsRequest({
         action,
         text: query,
+        imageB64,
         context: { url: activeTab?.url || "global" }
     }, null).then(res => {
          chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: res.text });
