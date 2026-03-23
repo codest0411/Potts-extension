@@ -1,0 +1,63 @@
+<svg width="800" height="240" viewBox="0 0 800 240" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@700&amp;display=swap');
+      .glow-text { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 32px; fill: #00e5ff; letter-spacing: 12px; text-anchor: middle; text-shadow: 0 0 10px rgba(0,229,255,0.8); }
+      .sub-text { font-family: 'Space Mono', monospace; font-size: 11px; fill: #7a8fa8; letter-spacing: 6px; text-anchor: middle; }
+      @keyframes spin { 100% { transform: rotate(360deg); } }
+      .dashed-ring { transform-origin: center; animation: spin 20s linear infinite; }
+      @keyframes pulse { 50% { opacity: 0.5; stroke-width: 6; } }
+      .pulse-ring { animation: pulse 3s ease-in-out infinite; }
+    </style>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#00e5ff" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#00e5ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#080b0f" rx="12"/>
+  
+  <!-- Ambient background grid -->
+  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+  </pattern>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <circle cx="400" cy="110" r="160" fill="url(#glow)"/>
+  
+  <!-- Center ARC Reactor structure -->
+  <g transform="translate(400, 105)">
+    <!-- Outer Rings -->
+    <circle cx="0" cy="0" r="65" fill="none" stroke="#00e5ff" stroke-width="1" opacity="0.4"/>
+    <circle class="dashed-ring" cx="0" cy="0" r="75" fill="none" stroke="#00e5ff" stroke-width="1.5" stroke-dasharray="4 8" opacity="0.8"/>
+    <circle cx="0" cy="0" r="50" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="6"/>
+    
+    <!-- Inner Core -->
+    <circle class="pulse-ring" cx="0" cy="0" r="40" fill="none" stroke="#00e5ff" stroke-width="3" opacity="0.9"/>
+    <circle cx="0" cy="0" r="34" fill="#00e5ff" opacity="0.1"/>
+    
+    <!-- Crosshairs & Alignments -->
+    <line x1="-25" y1="0" x2="25" y2="0" stroke="#00e5ff" stroke-width="2" opacity="0.8"/>
+    <line x1="0" y1="-25" x2="0" y2="25" stroke="#00e5ff" stroke-width="2" opacity="0.8"/>
+  </g>
+
+  <!-- Wing lines -->
+  <path d="M 50 105 L 280 105" stroke="#00e5ff" stroke-width="1" opacity="0.3"/>
+  <path d="M 520 105 L 750 105" stroke="#00e5ff" stroke-width="1" opacity="0.3"/>
+  <circle cx="280" cy="105" r="3" fill="#00e5ff" opacity="0.5"/>
+  <circle cx="520" cy="105" r="3" fill="#00e5ff" opacity="0.5"/>
+
+  <!-- Typography -->
+  <text x="508" y="215" class="glow-text">P.O.T.T.S.</text>
+  <text x="500" y="32" class="sub-text">PERSONAL OPERATIONS &amp; TACTICAL TASK SYSTEM</text>
+  
+  <!-- Mini status indicators -->
+  <g transform="translate(40, 205)">
+    <circle cx="0" cy="-3" r="4" fill="#00e676"/>
+    <text x="12" y="0" font-family="'Space Mono', monospace" font-size="10" fill="#7a8fa8">SYS.ONLINE</text>
+  </g>
+  <g transform="translate(680, 205)">
+    <circle cx="0" cy="-3" r="4" fill="#ffc107"/>
+    <text x="12" y="0" font-family="'Space Mono', monospace" font-size="10" fill="#7a8fa8">AI.ROUTING</text>
+  </g>
+</svg>
