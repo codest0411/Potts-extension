@@ -12,7 +12,8 @@
     "alarms",
     "offscreen",
     "declarativeNetRequest",
-    "clipboardRead"
+    "clipboardRead",
+    "contextMenus"
   ],
   "host_permissions": [
     "<all_urls>"

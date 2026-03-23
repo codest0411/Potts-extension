@@ -65,9 +65,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     
     if (msg.type === "REWRITE_FOCUSED_TEXT") {
         const activeElement = document.activeElement;
-        if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable)) {
-             // Send original to Gemini, await replacement (simplified for demo)
-            sendResponse({ original: activeElement.value || activeElement.innerText });
+        if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT' || activeElement.isContentEditable)) {
+             sendResponse({ original: activeElement.value || activeElement.innerText });
+        }
+    }
+
+    if (msg.type === "REPLACE_FOCUSED_TEXT") {
+        const activeElement = document.activeElement;
+        if (activeElement) {
+            if (activeElement.value !== undefined) {
+                activeElement.value = msg.payload;
+            } else if (activeElement.isContentEditable) {
+                activeElement.innerText = msg.payload;
+            }
+            
+            // Dispatch input event so React/Vue applications (like Twitter or Gmail) detect the rewrite
+            activeElement.dispatchEvent(new Event('input', { bubbles: true }));
         }
     }
 });

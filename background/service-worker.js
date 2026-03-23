@@ -19,6 +19,41 @@ chrome.runtime.onInstalled.addListener(async () => {
     if (!data.userName) {
         chrome.storage.local.set({ userName: 'Sir' });
     }
+
+    // Setup Context Menus
+    chrome.contextMenus.create({ id: "potts_explain", title: "POTTS: Explain This", contexts: ["selection"] });
+    chrome.contextMenus.create({ id: "potts_summarize", title: "POTTS: Summarize", contexts: ["selection"] });
+    chrome.contextMenus.create({ id: "potts_factcheck", title: "POTTS: Fact-Check Claim", contexts: ["selection"] });
+    chrome.contextMenus.create({ id: "potts_translate", title: "POTTS: Translate", contexts: ["selection"] });
+    chrome.contextMenus.create({ id: "potts_rewrite", title: "POTTS: Rewrite Text", contexts: ["editable"] });
+});
+
+// Listener for Context Menus
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === 'potts_rewrite') {
+        chrome.tabs.sendMessage(tab.id, { type: 'REWRITE_FOCUSED_TEXT' }, async (response) => {
+            if (response && response.original) {
+                 const rewritten = await askGemini(`Rewrite and improve the following text to make it professional and articulate. Return ONLY the newly rewritten text directly, with no extra commentary:\n${response.original}`);
+                 chrome.tabs.sendMessage(tab.id, { type: 'REPLACE_FOCUSED_TEXT', payload: rewritten });
+                 chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: "Text rewritten, Sir." });
+            }
+        });
+        return;
+    }
+
+    let action = 'GENERAL';
+    if (info.menuItemId === 'potts_explain') action = 'EXPLAIN';
+    if (info.menuItemId === 'potts_summarize') action = 'SUMMARIZE';
+    if (info.menuItemId === 'potts_factcheck') action = 'FACT_CHECK';
+    if (info.menuItemId === 'potts_translate') action = 'TRANSLATE';
+
+    const reqData = { action, text: info.selectionText, context: { url: tab.url } };
+    
+    // Process seamlessly behind the scenes
+    processPottsRequest(reqData, null).then(res => {
+        // Speak the result out loud like Jarvis
+        chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: res.text });
+    });
 });
 
 // Alarm Listener for Briefings
@@ -87,6 +122,14 @@ async function processPottsRequest(reqData, sender) {
                 const domain = new URL(context.url).hostname;
                 const scoreData = await computeTrustScore(domain);
                 responseText = `The trust score for ${domain} is ${scoreData.score}/100. ${scoreData.explanation}`;
+                break;
+
+            case 'EXPLAIN':
+                responseText = await askGemini(`Explain the following text clearly. If it's technical, simplify it somewhat, but provide depth if necessary. Text:\n${text}`);
+                break;
+
+            case 'FACT_CHECK':
+                responseText = await askGemini(`Fact-check the following claim. Be rigorous and provide a Verdcit (Verified/Disputed/False) and the reason why. Claim:\n${text}`);
                 break;
 
             case 'DEVIL_ADVOCATE':
