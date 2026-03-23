@@ -7,6 +7,7 @@ import { generateBriefing, setupAlarms } from '../core/briefing.js';
 import { computeTrustScore } from '../core/trust.js';
 import { getPrivacyReport } from '../core/privacy.js';
 import { translateText } from '../core/translate.js';
+import { PottsDB } from '../core/db.js';
 
 // Setup Initialization
 chrome.runtime.onInstalled.addListener(async () => {
@@ -33,6 +34,10 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === 'potts_rewrite') {
         chrome.tabs.sendMessage(tab.id, { type: 'REWRITE_FOCUSED_TEXT' }, async (response) => {
+            if (chrome.runtime.lastError) {
+                 chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: "I cannot access this page's text box, Sir." });
+                 return;
+            }
             if (response && response.original) {
                  const rewritten = await askGemini(`Rewrite and improve the following text to make it professional and articulate. Return ONLY the newly rewritten text directly, with no extra commentary:\n${response.original}`);
                  chrome.tabs.sendMessage(tab.id, { type: 'REPLACE_FOCUSED_TEXT', payload: rewritten });
@@ -44,6 +49,10 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
     if (info.menuItemId === 'potts_email_reply') {
         chrome.tabs.sendMessage(tab.id, { type: 'GET_DOM_CONTEXT' }, async (response) => {
+             if (chrome.runtime.lastError) {
+                 chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: "I cannot read emails on this restricted page, Sir." });
+                 return;
+             }
              const emailContext = response ? response.text : "";
              const reply = await askGemini(`You are writing an email reply. Based on the following page context (which contains the email thread), write a professional, concise reply. Output ONLY the email text.\nContext: ${emailContext}`);
              chrome.tabs.sendMessage(tab.id, { type: 'REPLACE_FOCUSED_TEXT', payload: reply });
@@ -69,19 +78,48 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Alarm Listener for Briefings & Reminders
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+    // CRITICAL: Ensure Voice TTS system is awake before speaking
+    try {
+        await setupOffscreenDocument();
+        // Give the offscreen document 200ms to register its message listeners before sending TTS_SPEAK
+        await new Promise(r => setTimeout(r, 200));
+    } catch(e) { console.error("Offscreen Boot Error:", e); }
+
     if (alarm.name === 'briefing-alarm') {
         const briefingText = await generateBriefing();
-        chrome.runtime.sendMessage({ type: 'TTS_SPEAK', payload: briefingText });
+        chrome.runtime.sendMessage({ type: 'TTS_SPEAK', payload: briefingText }).catch(() => {});
     } else if (alarm.name.startsWith('reminder__||__')) {
         const task = alarm.name.split('__||__')[1];
-        chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'assets/icon-128.png',
-            title: 'POTTS Reminder',
-            message: task,
-            priority: 2
-        });
-        chrome.runtime.sendMessage({ type: 'TTS_SPEAK', payload: `Sir, you have a scheduled reminder: ${task}` });
+        
+        try {
+            chrome.notifications.create(alarm.name + Date.now().toString(), {
+                type: 'basic',
+                // Using absolute root path to prevent background folder relative-path resolution failure
+                iconUrl: '/assets/icon-128.png', 
+                title: 'POTTS Reminder',
+                message: task,
+                priority: 2,
+                requireInteraction: true // Keeps the notification stuck on screen until the user dismisses it!
+            });
+            
+            // Backup notification: send a jarring alert() to the user's active tab so they absolutely cannot miss it
+            chrome.tabs.query({active: true}, (tabs) => {
+                 for (const t of tabs) {
+                     chrome.tabs.sendMessage(t.id, { type: 'SHOW_ALERT', payload: task }).catch(()=>{});
+                 }
+            });
+        } catch (e) {
+            console.error("Notification creation failed:", e);
+        }
+
+        chrome.runtime.sendMessage({ type: 'TTS_SPEAK', payload: `Sir, you have a scheduled reminder: ${task}` }).catch(() => {});
+        
+        // Clean up DB
+        try {
+            await PottsDB.deleteReminder(alarm.name);
+        } catch(e) {
+            console.error("DB clean failed:", e);
+        }
     }
 });
 
@@ -200,17 +238,14 @@ async function processPottsRequest(reqData, sender) {
                 break;
 
             case 'SAVE_VAULT':
-                const vaultData = await chrome.storage.local.get(['vaultMemory']);
-                let vault = vaultData.vaultMemory || [];
-                vault.push({ date: new Date().toISOString(), context: context?.url, memory: text });
-                await chrome.storage.local.set({ vaultMemory: vault });
-                responseText = "I have stored that in my long-term memory vault, Sir.";
+                await PottsDB.addVaultEntry(context?.url || "voice", text);
+                responseText = "I have stored that in my long-term memory DB, Sir.";
                 break;
                 
             case 'RECALL_VAULT':
-                const vd = await chrome.storage.local.get(['vaultMemory']);
-                const vtext = (vd.vaultMemory || []).map(m => `[${m.date}] ${m.memory}`).join('\n');
-                responseText = await askGemini(`The user is asking a question about their long-term memory vault. Search the vault data below to answer it. \nUser Question: ${text}\nVault Data:\n${vtext}`);
+                const vd = await PottsDB.getAllVaultEntries();
+                const vtext = vd.map(m => `[${m.date}] on ${m.context}: ${m.text}`).join('\n');
+                responseText = await askGemini(`The user is asking a question about their long-term memory database context. Search the vault data below to answer it. \nUser Question: ${text}\nVault Data:\n${vtext}`);
                 break;
 
             case 'SET_REMINDER':
@@ -220,30 +255,39 @@ async function processPottsRequest(reqData, sender) {
                 Example: {"task": "call john", "minutes": 5}`);
                 try {
                     const rData = JSON.parse(reminderDataStr.replace(/```json/g,'').replace(/```/g,'').trim());
-                    if (rData.task && rData.minutes) {
+                    if (rData.task && typeof rData.minutes !== 'undefined') {
+                        // Enforce number type to prevent "Invalid value for property delayInMinutes" crashes
+                        let mins = parseFloat(rData.minutes) || 1;
+                        if (mins < 1) mins = 1; // Native Chrome alarms require minimum of 1 minute in packed mode (or fractional works in unpacked but safe limit)
+                        
                         const alarmName = `reminder__||__${rData.task}`;
-                        chrome.alarms.create(alarmName, { delayInMinutes: rData.minutes });
-                        responseText = `I have set a reminder to ${rData.task} in ${rData.minutes} minute${rData.minutes !== 1 ? 's' : ''}, Sir.`;
+                        chrome.alarms.create(alarmName, { delayInMinutes: mins });
+                        await PottsDB.addReminder(rData.task, mins, alarmName);
+                        
+                        responseText = `I have set a reminder to ${rData.task} in ${mins} minute${mins !== 1 ? 's' : ''}. Saved to tracking database, Sir.`;
                     } else {
                         responseText = "I couldn't parse the time for the reminder, Sir.";
                     }
                 } catch(e) {
-                    responseText = "I encountered an error setting the reminder, Sir.";
+                    responseText = "I encountered an error formatting the reminder database, Sir.";
                 }
                 break;
 
             case 'LIST_REMINDERS':
                 const alarms = await chrome.alarms.getAll();
-                const reminders = alarms.filter(a => a.name.startsWith('reminder__||__'));
-                if (reminders.length === 0) {
-                    responseText = "You have no active scheduled reminders, Sir.";
+                const dbReminders = await PottsDB.getAllReminders();
+                const activeAlarmNames = new Set(alarms.map(a => a.name));
+                const activeReminders = dbReminders.filter(dbR => activeAlarmNames.has(dbR.alarmName));
+                
+                if (activeReminders.length === 0) {
+                    responseText = "You have no active scheduled reminders in the database, Sir.";
                 } else {
-                    const taskList = reminders.map(a => {
-                        const tName = a.name.split('__||__')[1];
-                        const diffMins = Math.round((a.scheduledTime - Date.now()) / 60000);
-                        return `${tName} in ${diffMins} minutes`;
+                    const taskList = activeReminders.map(dbR => {
+                        const scheduledTime = new Date(dbR.scheduledFor).getTime();
+                        const diffMins = Math.max(0, Math.round((scheduledTime - Date.now()) / 60000));
+                        return `${dbR.task} in ${diffMins} minutes`;
                     }).join(', ');
-                    responseText = `You have ${reminders.length} active reminders: ${taskList}.`;
+                    responseText = `You have ${activeReminders.length} scheduled reminders: ${taskList}.`;
                 }
                 break;
 
@@ -292,8 +336,13 @@ async function handleVoiceCommand(transcript) {
     else if (query.includes('privacy')) action = 'PRIVACY_REPORT';
     else if (query.includes('what am i looking at') || query.includes('read screen')) {
         action = 'VISION_ANALYZE';
-        const dataUrl = await chrome.tabs.captureVisibleTab(null, {format: 'jpeg', quality: 50});
-        imageB64 = dataUrl;
+        try {
+            const dataUrl = await chrome.tabs.captureVisibleTab(null, {format: 'jpeg', quality: 50});
+            imageB64 = dataUrl;
+        } catch (e) {
+            chrome.runtime.sendMessage({ type: "TTS_SPEAK", payload: "I am unable to see this screen, Sir. Chrome restricts vision on this page." });
+            return;
+        }
     }
     else if (query.includes('remind me to') || query.includes('set a reminder')) action = 'SET_REMINDER';
     else if (query.includes('what are my reminders') || query.includes('list active reminders')) action = 'LIST_REMINDERS';

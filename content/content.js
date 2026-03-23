@@ -59,6 +59,11 @@ async function analyzePage() {
 
 // 3. Listen for requests from popup/background for focused text (Smart Text Rewriter)
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (msg.type === "SHOW_ALERT") {
+        alert("🔔 POTTS REMINDER:\n\n" + msg.payload);
+        return;
+    }
+
     if (msg.type === "GET_DOM_CONTEXT") {
         sendResponse({ text: getPageContent(), url: window.location.href });
     }
